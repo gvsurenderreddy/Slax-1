@@ -1,0 +1,232 @@
+Slax directory structure
+Slax 路径结构
+All Slax data files are located on the boot media in a single directory. It is no surprise that the name of that directory is 'slax'. All the magic happens inside. Here is an overview of simplified directory structure; directories are red, some interesting files are mentioned as well, using italic:
+
+slax
+├─── boot
+│    ├─── isolinux.bin
+│    ├─── syslinux.cfg
+│    ├─── initrfs.img 
+│    ├─── vmlinuz
+│    └─── ...
+├─── changes
+├─── rootcopy
+├─── 01-core.sb
+├─── 02-xorg.sb
+├─── 03-kdeps.sb
+├─── 04-kde.sb
+└─── ...
+Booting the Linux kernel
+引导linux内核
+When your computer's BIOS boots Slax, it actually just runs SYSLINUX boot loader. The boot loader itself is stored either in file isolinux.bin or ldlinux.sys, depending on your boot media - CD/DVD uses isolinux.bin, USB disk or hard drive uses ldlinux.sys.
+当BIOS引导slax，实际上只是运行了syslinux引导加载器。引导加载器本身存在于文件isolinux.bin或ldlinux.sys中，取决于引导介质，CD/DVD使用isolinux.bin,USB或硬盘使用ldlinux.sys.
+As soon as the SYSLINUX boot loader is executed, it learns what to do next from its configuration file (you guessed it) syslinux.cfg. In Slax, this configuration file contains instructions to show some cool boot logo and optionally provide boot menu if the user hits a key before timeout. When the timeout counter reaches zero or the user exited boot menu, SYSLINUX boot loader loads two files into memory: vmlinuz (Linux kernel) and initrfs.img (base root filesystem). The progress is indicated by continuous stream of dots printed on screen. Once the files are loaded, the vmlinuz binary is executed to start the Linux kernel.
+一旦syslinux引导加载器运行，它会按照它的配置文件syslinux.cfg的设置运行。在Slax中，这个配置文件包含了logo设置、倒计时的引导菜单等。一旦倒计时为0或者用户退出了引导菜单，syslinux引导加载器会将vmlinuz（linux kernel）和initrfs.img（base root filesystem)两个文件加载到内存。这个过程运行时，会在屏幕上不断打印出一串连续的点。一旦文件加载完毕，vmlinuz二进制文件就运行启动linux kernel。
+
+Pre-init
+预初始化
+Under normal conditions (when a standard Linux distribution is starting from a hard drive), the Linux kernel would mount root filesystem from the hard drive and /sbin/init would be executed as the main process which takes care of system startup. In Slax, the situation is different - there is no hard drive to mount the root filesystem from, yet the kernel surely needs some init process to be started. For that purpose, Slax carries a base filesystem in initrfs.img file - it is a compressed CPIO archive with some directories and files inside, including core Linux tools (commands) and the desired init.
+一般情况下（一个标准linux发行版从硬盘启动），linux kernel会从硬盘挂载root filesystem 而且 /sbin/init会作为主进程运行接管系统启动。Slax则不同，没有硬盘可以挂载root filesystem，而kernel确实需要启动一个init进程。因此，Slax在initrfs.img文件中带了一个base filesystem-它是一个压缩的CPIO归档，有一些文件夹和文件，包换了核心linux工具（命令）和init。
+
+So after the Linux kernel has successfully initialized and has a full control of your computer, its last task is to find the mentioned CPIO archive in memory (it was loaded there from file initrfs.img by syslinux boot loader as you surely remember), extract it (into a memory area which acts as a temporary root filesystem, called initramfs) and execute temporary /init process from there.
+在linux kernel就成功初始化并获得了pc的完全控制后，它的任务就是找到刚才提到的内存中CPIO归档（它已经被syslinux boot loader从initrfs.img加载到内存),解压缩（在内存中作为临时root filesystem，叫做initramfa）并运行临时/init
+
+Escaping initramfs
+退出initramfs
+At this moment, we have a fully initialized Linux Kernel running, initramfs area in memory is populated by a temporary root filesystem with just the most basic Linux commands, and temporary init just started.
+此时，我们已经有了一个完整初始化过的linux kernel在运行，initramfs在内存中作为临时root filesystem具有最基本的linux命令，而且临时init也已经运行。
+
+Having the temporary root filesystem in initramfs is not ideal, since it doesn't support pivot_root system call - an important operation which will be used later in the boot up process. We need to switch from initramfs to something else. To do that, the temporary init firstly mounts a tmpfs filesystem over /m, moves all files and directories in there including the init script itself, and uses switch_root to make this tmpfs /m the new root and to restart the init itself from there too. Blue star denotes the directory which is moved.
+虽然具备了initramfs的临时root filesystem，但还不够。因为它不支持pivot_root系统调用-一个稍后要用到的启动过程中很重要的操作。我们需要从initramfs切换出去，为此，临时init首先挂载了一个tmpfs文件系统在/m，把所有文件和文件夹包含init脚本本身都移动到/m,然后使用switch_root将这个tmpfs /m成为新的root并重启它其中的init。蓝色星星代表被移动的路径。
+
+initramfs as root:
+(initramfs)
+/
+├─── bin
+│    ├─── sh
+│    ├─── mount
+│    └─── ...
+├─── dev
+├─── lib
+│    ├─── cleanup
+│    └─── ...
+├─── mnt
+├─── m (tmpfs) ★
+├─── memory
+├─── proc
+├─── sys
+└─── init
+-> initramfs after move to tmpfs:
+(initramfs)
+/
+└─── m (tmpfs) ★
+     ├─── bin
+     │    ├───sh
+     │    ├───mount
+     │    └─── ...
+     ├─── dev
+     ├─── lib
+     │    ├─── cleanup
+     │    └─── ...
+     ├─── mnt
+     ├─── memory
+     ├─── proc
+     ├─── sys
+     └─── init
+-> tmpfs after switch_root:
+(tmpfs) ★
+/
+├─── bin
+│    ├─── sh 
+│    ├─── mount 
+│    └─── ...
+├─── dev
+├─── lib
+│    ├─── cleanup
+│    └─── ...
+├─── mnt
+├─── memory
+├─── proc
+├─── sys
+└─── init
+No matter how strange this whole action looks like (we've ended up with the very same directory structure like before, it seems like no improvement at all), the change is significant. Since now, the temporary root filesystem is on tmpfs instead of initramfs, and thus pivot_root operation will be available when needed in the future.
+无论这整个过程有多么不同（我们最终有了一个和刚才完全相同的文件架构）
+从此，临时root filesystem在tmpfs，取代了initramfs，因此，在后面pivot_root操作也可以进行了。
+
+You may be wondering why is the current root filesystem still labeled as temporary. It's because we're still at the very beginning of the construction phase and we'll just build the real root filesystem later, as explained below, by combining Slax compressed data images to AUFS union.
+你可能想知道为什么现在的root filesystem仍然是临时的。这是由于我们仍然处于开始阶段，我们将在后面构建真正的root filesystem，后面会解释，将slax的压缩数据镜像结合到aufs union中。
+
+Slax data lookup
+Slax数据查找
+Before the init process could start to search for Slax data on available devices, it needs to setup the working environment. The proc and sysfs filesystems are mounted over /proc and /sys respectively. Some important kernel drivers such as aufs, squashfs and loop are loaded using modprobe, and device files are created in /dev directory by mdev command. Path to the mdev binary is also echoed to /proc/sys/kernel/hotplug, to make sure that the Linux Kernel automatically creates new device files in /dev for all the newly discovered disk partitions as soon as they become available later. That is specially needed for partitions on USB devices, since those can take few seconds to fully initialize.
+在init进程能够在存在的设备上寻找Slax数据前，它需要设置工作环境。proc和sysfs文件系统分别被挂载在/proc和/sys，一些重要的kernel驱动，如aufs，squashfs和loop已被modprobe加载，而且设备文件已经被mdec命令在/dev路径生成。mdev二进制的路径也被显示在/proc/sys/kernel/hotplug,为了确认linux kernel是否自动创建新设备文件在/dev 为所有新发现的硬盘分区一旦可用。这是一个非常特殊的需求关于usb设备分区，因此可能会花几秒钟初始化。
+
+As soon as storage devices are accessible through device files in /dev, blkid command is used to filter out only those which can be mounted (which contain a filesystem known to the running kernel). The devices are examined (mounted read-only over /memory/data/) one after another, until a valid Slax data directory is found. Then, all files with .sb extension (Slax Bundles) are processed - for each Slax Bundle, a directory is created in /memory/bundles/ and the bundle (which in fact is a squashfs compressed image file) is loop-mounted over it. In the diagram below, squashfs content is green.
+一旦存储设备可以通过/dev的设备文件进行访问，blikd命令用来筛选出那些可以被挂载的（包含运行中kernel可识别的文件系统）。设备挨个经过测试（只读挂载于/memory/data/），直到一个有效的Slax数据路径被找到。然后，所有.sb文件被执行-每个Slax Bundle都会在/memory/bundles/下被建立一个路径，并且bundle（实际上就是一个squashfs压缩镜像文件）被loop-mounte。如下图所示，squashfs是绿色的。
+
+(tmpfs)
+/
+├─── bin
+├─── dev
+├─── ...
+├─── memory
+│    ├─── bundles
+│    │    ├─── 01-core.sb (squasfhs mount) < ───┐
+│    │    │    ├─── bin                         │
+│    │    │    ├─── etc                         │
+│    │    │    ├─── sbin                        │
+│    │    │    └─── ...                         │
+│    │    ├─── 02-xorg.sb ......................│...
+│    │    │    ├─── etc                         │  :
+│    │    │    ├─── usr                         │  :
+│    │    │    └─── ...                         │  :
+│    │    ├─── 04-kde.sb .......................│..:...
+│    │    │    ├─── usr                         │  :  :
+│    │    │    └─── ...                         │  :  :
+│    │    └─── ...                              │  :  : loop
+│    ├─── data (slax device mounted here)       │  :  : mounts
+│    │    └─── slax                             │  :  :
+│    │         ├─── boot                        │  :  :
+│    │         ├─── changes                     │  :  :
+│    │         ├─── rootcopy                    │  :  :
+│    │         ├─── 01-core.sb ──── > ──── > ───┘  :  :
+│    │         ├─── 02-xorg.sb ....................:  :
+│    │         ├─── 04-kde.sb ........................:
+│    │         └─── ...
+│    ├─── changes (empty yet)
+│    └─── union (empty yet)
+├─── proc (procfs mounted here)
+├─── sys (sysfs mounted here)
+└─── init
+Putting it together with AUFS
+联合成AUFS
+Various parts of the final root filesystem are now mounted read-only under separated folders in /memory/bundles. Core Linux system utilities and libraries such as /bin/bash or /lib/ld-linux.so are located in /memory/bundles/01-core.sb/, files related to KDE desktop environment can be found in /memory/bundles/04-kde.sb/, and so on. Combining them into a single root filesystem, which is even writable, is only possible thanks to AUFS - an union-like filesystem developed by Mr. Junjiro Okajima. AUFS is capable of taking several folders (so called branches) and combining them together to a single directory. That is exactly what happens next, the separated parts are combined, together with a directory /memory/changes/, to AUFS union, which gets mounted at /memory/union.
+最终的root filesystem各个部分现在都只读挂载于/memory/bundles下的各个文件夹。核心linux 系统实用程序和库 比如/bin/bash或/lib/ld-linux.so位于/memory/bundles/01-core.sb/,KDE桌面环境的相关文件位于/memory/bundles/04-kde.sb,等等。把他们联合成一个可写的单root filesystem，
+唯一的方法就是AUFS-一种类union文件系统，由。。。开发。AUFS可容纳多个文件夹（也叫做分支）并把他们联合成一个单路径。即把那些分散的部分进行联合，组合进一个路径/memory/changes下,成为AUFS union，挂载在/memory/union。
+
+(tmpfs)
+/
+├─── ...
+└─── memory
+     ├─── bundles
+     │    ├─── 01-core.sb ───────── > ──────┐
+     │    ├─── 02-xorg.sb ..................│.......
+     │    ├─── 04-kde.sb ...................│......:........
+     │    └─── ...                          │      :       :
+     ├─── changes ──────── > ───────┐       │      :       :
+     ├─── ...                       ˅       ˅      :       :
+     └─── union < ═══════ < ═══════ < ───── < ─────┘ < ────┘
+          ├─── bin            AUFS
+          ├─── etc            mount
+          ├─── mnt
+          ├─── root
+          ├─── sbin
+          ├─── usr
+          ├─── ...
+          └─── var
+Changes
+The empty directory /memory/changes is writable, thus the entire AUFS mount in /memory/union happens to be writable as well. All new or changed files inside the union are copied-up to this empty directory before the system creates or modifies them. Since the directory for changes resides on tmpfs (that is in RAM), all new and modified files are stored in RAM and thus are lost on reboot.
+空路径/memory/changes是可写的，因此整个AUFS挂载在/memory/union也是可写的。所有union中的新文件或文件改变被复制到这个空路径，在系统创建或修改他们前。由于这个路径属于tmpfs（RAM中），所有新建和修改文件都存储在内存RAM，如果重启就会丢失。
+
+Yet if Slax is started from a writable media such as USB device or hard disk, it recognizes that and mounts the writable drive over /memory/changes before it is joined with the other branches in union, which effectively means that changed and new files will be stored on the boot device rather than in RAM, and reboot won't erase them. This feature is called Persistent Changes and can be turned on or off by a boot menu setting.
+而且，如果Slax从一个可写介质启动的话，比如USB或硬盘，它会认为并挂载可写在/memory/changes 在它在union中加入其他分支前。实际上意味着变更和新文件会存储在引导设备而不是ram，重启不会丢失，该特征叫做持续更改，可在引导菜单设定中进行开关。
+
+Switching to the real root
+切换到真正的root
+At this point, fully writable final root filesystem has been built in /memory/union. The temporary init's life is coming to its end. It uses pivot_root and chroot system calls to make /memory/union the new root, transferring the temporary tmpfs root to /mnt/live/ in the new root. Blue and green stars at the diagram below denote what moves where. Finally, the real /sbin/init from aufs root filesystem is executed. The booting of Slax operating system just begins.
+此时，整个的可写的最终的root 文件系统位于/memory/union.临时init文件。。。。它用pivot_root 并chroot 系统调用使/memory/union成为新的root。传递临时tmpfs root 给/mnt/live/,在新root。下图蓝和绿星星代表着移动位置。最后，aufs root文件系统里的真正/sbin/init被运行。Slax OS的引导才正式开始。
+
+tmpfs root before pivot_root syscall:
+
+(tmpfs) ★
+/
+├─── ...
+└─── memory
+     └─── union (aufs) ★
+          ├─── bin
+          ├─── etc
+          ├─── mnt
+          │    └─── live (empty)
+          ├─── root
+          ├─── sbin
+          │    ├─── ... 
+          │    └───init
+          ├─── usr
+          ├─── ...
+          └─── var
+
+aufs as new root:
+
+(aufs) ★
+/
+├─── bin
+├─── etc
+├─── mnt
+│    └─── live (tmpfs) ★
+│         ├─── ...
+│         └─── memory
+│              └─── union (empty)
+├─── root
+├─── sbin
+│    ├─── ...
+│    └─── init <- gets executed
+├─── usr
+├─── ... 
+└─── var
+Adding modules to Slax on the fly
+Slax增加模块
+The root filesystem is writable and we could install new software packages while running Slax just the usual way, by unpacking them. Yet there is another possibility to add new files and directories to Slax on the fly without installing any packages. Thanks to the fact Slax is running with AUFS as root, we can take some other squashfs compressed filesystem, loop-mount it over a directory which resides outside of the aufs tree (for example over /mnt/live/memory/bundles/name.sb/ which is on tmpfs), and then issue a remount command which adds the newly mounted directory to aufs as a new branch.
+root filesystem可写，所以我们可以安装新软件按照通常的方式。还有另一种方法，不需要安装即可。感谢Slax以root运行于AUFS，我们可以一些squashfs压缩文件系统，loop挂载在一个路径属于aufs树的（例如，/mnt/live/memory/bundles/name.sb 位于tmpfs），remount命令可以增加新挂载点到aufs作为新分支
+
+All the files and directories from the new squashfs module will instantly appear as like if they were installed in the system from the beginning, while decompression is done on the fly, only for the files which are actually accessed.
+所有的文件和文件夹在新squashfs模块的会立刻出现就像他们一开始就安装的一样，。。。。。。。
+
+Similarly, we can remove a previously added AUFS branch (mounted squashfs) from the aufs root by another remount command. The files which were part of the branch will instantly disappear from the system, which effectively uninstalls the package.
+相似的，我们能移除一个预增加的AUFS分支（挂载的squashfs)从aufs root，利用另一个remount命令。分支部分的文件会从系统小时，就卸载了软件包。
+
+Slax shutdown
+When Slax is shutting down either for reboot or for system power off, it performs all the standard tasks as every other Linux would do, like unmounting all partitions mounted by the user, terminating all processes, and so on. But since the boot device may be still mounted and used for persistent changes at the very end, some more steps need to be done before the real power off is issued, to ensure the boot device is cleanly unmounted.
+
+Instead of turning the system off at the moment when init thinks it should do that, Slax executes a cleanup script which resides in /mnt/live/lib/cleanup. This script calls pivot_root and chroot as we know it in order to change the root filesystem back to the tmpfs again. That is exactly the opposite of what was described in the sections called Switching to the real root.
+
+When root filesystem is switched back to tmpfs, 'telinit u' is executed to inform the current init process to terminate (it would otherwise block the union from unmounting) and re-execute the cleanup script as a new init. The union is no longer blocked since there are no open files and no running processes on it any longer. It is properly unmounted, all loop-mounts disconnected and the boot device is cleanly ejected. At the end, the computer reboots or shuts down, depending on what the user intended to do.
