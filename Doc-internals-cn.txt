@@ -227,7 +227,7 @@ Similarly, we can remove a previously added AUFS branch (mounted squashfs) from 
 Slax shutdown
 Slax关机
 When Slax is shutting down either for reboot or for system power off, it performs all the standard tasks as every other Linux would do, like unmounting all partitions mounted by the user, terminating all processes, and so on. But since the boot device may be still mounted and used for persistent changes at the very end, some more steps need to be done before the real power off is issued, to ensure the boot device is cleanly unmounted.
-
+当Slax关机或重启
 Instead of turning the system off at the moment when init thinks it should do that, Slax executes a cleanup script which resides in /mnt/live/lib/cleanup. This script calls pivot_root and chroot as we know it in order to change the root filesystem back to the tmpfs again. That is exactly the opposite of what was described in the sections called Switching to the real root.
 
 When root filesystem is switched back to tmpfs, 'telinit u' is executed to inform the current init process to terminate (it would otherwise block the union from unmounting) and re-execute the cleanup script as a new init. The union is no longer blocked since there are no open files and no running processes on it any longer. It is properly unmounted, all loop-mounts disconnected and the boot device is cleanly ejected. At the end, the computer reboots or shuts down, depending on what the user intended to do.
