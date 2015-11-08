@@ -225,6 +225,7 @@ Similarly, we can remove a previously added AUFS branch (mounted squashfs) from 
 相似的，我们能移除一个预增加的AUFS分支（挂载的squashfs)从aufs root，利用另一个remount命令。分支部分的文件会从系统小时，就卸载了软件包。
 
 Slax shutdown
+Slax关机
 When Slax is shutting down either for reboot or for system power off, it performs all the standard tasks as every other Linux would do, like unmounting all partitions mounted by the user, terminating all processes, and so on. But since the boot device may be still mounted and used for persistent changes at the very end, some more steps need to be done before the real power off is issued, to ensure the boot device is cleanly unmounted.
 
 Instead of turning the system off at the moment when init thinks it should do that, Slax executes a cleanup script which resides in /mnt/live/lib/cleanup. This script calls pivot_root and chroot as we know it in order to change the root filesystem back to the tmpfs again. That is exactly the opposite of what was described in the sections called Switching to the real root.
