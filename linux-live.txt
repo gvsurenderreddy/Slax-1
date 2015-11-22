@@ -1,0 +1,2 @@
+1.通过mksquashfs(from squash-tools)把多个文件夹打包成一个文件(.sb)，该文件可通过mount挂载使用。(类似iso？)
+2.union
